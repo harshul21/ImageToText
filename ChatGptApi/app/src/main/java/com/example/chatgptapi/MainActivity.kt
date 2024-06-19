@@ -4,25 +4,37 @@ import android.annotation.SuppressLint
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
 import android.util.Log
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat.startActivityForResult
 import com.example.chatgptapi.ui.theme.ChatGptApiTheme
 import kotlinx.coroutines.CoroutineScope
@@ -51,22 +63,86 @@ class MainActivity : ComponentActivity() {
         setContent {
             ChatGptApiTheme {
 
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Button(onClick = {
-                        CoroutineScope(Dispatchers.IO).launch {
-                            getResponse()
-                        }
-                    }) {
-                        Text("Send")
-                    }
-                }
+                MyApp()
+//                Column(
+//                    modifier = Modifier.fillMaxSize(),
+//                    verticalArrangement = Arrangement.Center,
+//                    horizontalAlignment = Alignment.CenterHorizontally
+//                ) {
+//
+//
+//                    Button(onClick = {
+//                        CoroutineScope(Dispatchers.IO).launch {
+//                            getResponse()
+//                        }
+//                    }) {
+//                        Text("Send")
+//                    }
+//                }
             }
         }
 
+    }
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+@Composable
+fun MyApp() {
+    var imageUri by remember { mutableStateOf<Uri?>(null) }
+    var text by remember { mutableStateOf<String>("") }
+    var bitmap by remember { mutableStateOf<Bitmap?>(null) }
+    val context = LocalContext.current
+    val imageLauncher = rememberLauncherForActivityResult(contract = ActivityResultContracts.GetContent()) { uri: Uri? ->
+        uri?.let {
+            imageUri = it
+            bitmap = MediaStore.Images.Media.getBitmap(context.contentResolver, it)
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        bitmap?.let {
+            Image(bitmap = it.asImageBitmap(), contentDescription = null, modifier = Modifier.size(200.dp))
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(onClick = { imageLauncher.launch("image/*") }) {
+            Text("Select Image")
+
+            bitmap?.let { bitmap->
+                File(context.filesDir, "screenshot.png")
+                    .writeBitmap(bitmap, Bitmap.CompressFormat.PNG, 85)
+
+                Log.i("MYLOG","${context.filesDir}")
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(onClick = {
+            CoroutineScope(Dispatchers.IO).launch {
+                text = getResponse()
+            }
+        }) {
+            Text("Recognize Text")
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(text)
+    }
+}
+
+private fun File.writeBitmap(bitmap: Bitmap, format: Bitmap.CompressFormat, quality: Int) {
+    outputStream().use { out ->
+        bitmap.compress(format, quality, out)
+        out.flush()
     }
 }
 
@@ -79,12 +155,13 @@ fun encodeImage(imagePath: String): String {
     return Base64.getEncoder().encodeToString(bytes)
 }
 
-@RequiresApi(Build.VERSION_CODES.O)
-private fun getResponse() {
-    val apiKey="API_KEY"
 
+@RequiresApi(Build.VERSION_CODES.O)
+fun getResponse(): String {
+    val apiKey = "API_KEY"
+    var rtrResponse = ""
     // Path to your image
-    val imagePath = "/storage/emulated/0/Pictures/ques_2.jpeg"
+    val imagePath = "/data/user/0/com.example.chatgptapi/files/screenshot.png"
 
     // Getting the base64 string
     val base64Image = encodeImage(imagePath)
@@ -142,11 +219,15 @@ private fun getResponse() {
                             .getJSONObject("message")
                             .getString("content")
 
+                        rtrResponse = content
                         Log.i("MYLOG", "Parsed Content: $content")
+
                 }
             }
         }
     })
+
+    return rtrResponse
 }
 
 
