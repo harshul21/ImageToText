@@ -1,0 +1,153 @@
+package com.example.chatgptapi
+
+import android.annotation.SuppressLint
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.os.Build
+import android.os.Bundle
+import android.util.Log
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.RequiresApi
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.core.app.ActivityCompat.startActivityForResult
+import com.example.chatgptapi.ui.theme.ChatGptApiTheme
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody
+import okhttp3.Response
+import okio.IOException
+import org.json.JSONObject
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.util.Base64
+
+
+class MainActivity : ComponentActivity() {
+    @RequiresApi(Build.VERSION_CODES.O)
+    @SuppressLint("CoroutineCreationDuringComposition")
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        setContent {
+            ChatGptApiTheme {
+
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Button(onClick = {
+                        CoroutineScope(Dispatchers.IO).launch {
+                            getResponse()
+                        }
+                    }) {
+                        Text("Send")
+                    }
+                }
+            }
+        }
+
+    }
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+fun encodeImage(imagePath: String): String {
+    val file = File(imagePath)
+    val bytes = file.readBytes()
+
+    Log.i("MYLOG", "Bytes: ${bytes.size}")
+    return Base64.getEncoder().encodeToString(bytes)
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+private fun getResponse() {
+    val apiKey="API_KEY"
+
+    // Path to your image
+    val imagePath = "/storage/emulated/0/Pictures/ques_2.jpeg"
+
+    // Getting the base64 string
+    val base64Image = encodeImage(imagePath)
+
+    val client = OkHttpClient()
+
+    val mediaType = "application/json".toMediaTypeOrNull()
+    val body = RequestBody.create(
+        mediaType, """
+        {
+          "model": "gpt-4o",
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "What is the answer to the question in the image"
+                },
+                {
+                  "type": "image_url",
+                  "image_url": {
+                    "url": "data:image/jpeg;base64,$base64Image"
+                  }
+                }
+              ]
+            }
+          ],
+          "max_tokens": 300
+        }
+    """.trimIndent())
+
+    val request = Request.Builder()
+        .url("https://api.openai.com/v1/chat/completions")
+        .post(body)
+        .addHeader("Content-Type", "application/json")
+        .addHeader("Authorization", "Bearer $apiKey")
+        .build()
+
+    client.newCall(request).enqueue(object : Callback {
+        override fun onFailure(call: Call, e: IOException) {
+            e.printStackTrace()
+        }
+
+        override fun onResponse(call: Call, response: Response) {
+            response.use {
+                if (!response.isSuccessful) throw IOException("Unexpected code $response")
+                    response.use {
+                        if (!response.isSuccessful) throw IOException("Unexpected code $response")
+
+                        val jsonResponse = JSONObject(response.body?.string())
+                        val content = jsonResponse
+                            .getJSONArray("choices")
+                            .getJSONObject(0)
+                            .getJSONObject("message")
+                            .getString("content")
+
+                        Log.i("MYLOG", "Parsed Content: $content")
+                }
+            }
+        }
+    })
+}
+
+
+
